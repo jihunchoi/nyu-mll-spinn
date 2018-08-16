@@ -13,7 +13,7 @@ from spinn.data.boolean import load_boolean_data
 from spinn.data.listops import load_listops_data
 from spinn.data.sst import load_sst_data, load_sst_binary_data
 from spinn.data.nli import load_nli_data
-from spinn.util.blocks import EncodeGRU, IntraAttention, Linear, ReduceTreeGRU, ReduceTreeLSTM, ReduceTensor,  bundle
+from spinn.util.blocks import EncodeGRU, EncodeLSTM, IntraAttention, Linear, ReduceTreeGRU, ReduceTreeLSTM, ReduceTensor,  bundle
 from spinn.util.misc import Args
 from spinn.util.logparse import parse_flags
 
@@ -369,6 +369,7 @@ def get_flags():
                        ["pass",
                         "projection",
                         "gru",
+                        "lstm",
                         "attn"],
                        "Encode embeddings with sequential context.")
     gflags.DEFINE_boolean("encode_reverse", False, "Encode in reverse order.")
@@ -649,6 +650,13 @@ def init_model(
                             bidirectional=FLAGS.encode_bidirectional,
                             reverse=FLAGS.encode_reverse,
                             mix=(FLAGS.model_type != "CBOW"))
+    elif FLAGS.encode == "lstm":
+        context_args.reshape_input = lambda x, batch_size, seq_length: x.view(
+            batch_size, seq_length, -1)
+        context_args.reshape_context = lambda x, batch_size, seq_length: x.view(
+            batch_size * seq_length, -1)
+        context_args.input_dim = FLAGS.model_dim
+        encoder = EncodeLSTM(FLAGS.word_embedding_dim, FLAGS.model_dim)
     elif FLAGS.encode == "attn":
         context_args.reshape_input = lambda x, batch_size, seq_length: x.view(
             batch_size, seq_length, -1)

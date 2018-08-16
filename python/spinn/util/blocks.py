@@ -452,6 +452,16 @@ class EncodeGRU(GRU):
         return output.contiguous()
 
 
+class EncodeLSTM(nn.Module):
+    def __init__(self, inp_dim, model_dim, *args, **kwargs):
+        super().__init__()
+        self.lstm = StatePreservingLSTM(input_size=inp_dim, hidden_size=model_dim // 2)
+    
+    def forward(self, x, h0=None):
+        output = self.lstm(x).contiguous()
+        return output
+
+
 class LSTM(nn.Module):
     def __init__(self, inp_dim, model_dim, num_layers=1,
                  reverse=False, bidirectional=False, dropout=None):
@@ -502,6 +512,39 @@ class LSTM(nn.Module):
         if self.reverse:
             output = reverse_tensor(output, dim=1)
 
+        return output
+
+
+class StatePreservingLSTM(nn.Module):
+
+    def __init__(self, input_size, hidden_size, noisin=0):
+        super().__init__()
+        self.cell = nn.LSTMCell(input_size=input_size, hidden_size=hidden_size)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_normal(self.cell.weight_ih.data)
+        nn.init.orthogonal(self.cell.weight_hh.data)
+        nn.init.constant(self.cell.bias_ih.data, val=0)
+        nn.init.constant(self.cell.bias_hh.data, val=0)
+        self.cell.bias_hh.data.chunk(4)[1].fill_(1)
+
+    def forward(self, inputs, prev_state=None):
+        batch_size, max_length, _ = inputs.size()
+        if prev_state is None:
+            zero_state = Variable(
+                inputs.data.new(batch_size, self.cell.hidden_size).zero_())
+            prev_state = (zero_state, zero_state)
+        hs = []
+        cs = []
+        for t in range(max_length):
+            h, c = self.cell(input=inputs[:, t, :], hx=prev_state)
+            hs.append(h)
+            cs.append(c)
+            prev_state = h, c
+        hs = torch.stack(hs, dim=1)
+        cs = torch.stack(cs, dim=1)
+        output = torch.cat([hs, cs], dim=2)
         return output
 
 
